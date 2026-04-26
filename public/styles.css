@@ -119,10 +119,14 @@ h2 {
 
 .controls {
   display: grid;
-  grid-template-columns: 150px 130px 150px minmax(220px, 1fr) repeat(4, auto);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
   padding: 16px;
+}
+
+.controls .wide {
+  grid-column: span 2;
 }
 
 label {
@@ -153,7 +157,7 @@ input:focus {
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   margin-top: 14px;
   overflow: hidden;
@@ -261,6 +265,12 @@ input:focus {
   border-color: rgba(180, 35, 24, 0.45);
   background: #ffe5df;
   color: var(--red);
+}
+
+.option.in-range:not(.hit) {
+  border-color: rgba(31, 111, 235, 0.38);
+  background: #eaf2ff;
+  color: #174ea6;
 }
 
 .market-actions {

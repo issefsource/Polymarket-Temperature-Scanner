@@ -175,7 +175,25 @@ function marketUrl(market, event) {
   return POLYMARKET_WEB;
 }
 
-function normalizeMarket(market, sourceEvent, threshold) {
+function clampCents(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, number));
+}
+
+function centsRangeFromParams(params) {
+  const first = clampCents(params.get("minCents"), 0);
+  const second = clampCents(params.get("maxCents"), 100);
+  const minCents = Math.min(first, second);
+  const maxCents = Math.max(first, second);
+
+  return {
+    minCents,
+    maxCents
+  };
+}
+
+function normalizeMarket(market, sourceEvent, threshold, centsRange) {
   const event = bestEvent(market, sourceEvent);
   const outcomes = parseMaybeJson(market.outcomes);
   const prices = parseMaybeJson(market.outcomePrices);
@@ -183,17 +201,25 @@ function normalizeMarket(market, sourceEvent, threshold) {
 
   const options = outcomes.map((outcome, index) => {
     const price = Number(prices[index]);
+    const priceCents = Number.isFinite(price) ? Math.round(price * 10000) / 100 : null;
     return {
       outcome: String(outcome),
       price: Number.isFinite(price) ? price : null,
-      priceCents: Number.isFinite(price) ? Math.round(price * 10000) / 100 : null,
+      priceCents,
       tokenId: tokenIds[index] ? String(tokenIds[index]) : null,
-      alerted: Number.isFinite(price) && price >= threshold
+      alerted: Number.isFinite(price) && price >= threshold,
+      inRange: priceCents != null && priceCents >= centsRange.minCents && priceCents <= centsRange.maxCents
     };
   });
 
   const topOption = options.reduce((best, option) => {
     if (option.price == null) return best;
+    if (!best || option.price > best.price) return option;
+    return best;
+  }, null);
+
+  const topRangeOption = options.reduce((best, option) => {
+    if (!option.inRange || option.price == null) return best;
     if (!best || option.price > best.price) return option;
     return best;
   }, null);
@@ -215,7 +241,9 @@ function normalizeMarket(market, sourceEvent, threshold) {
     url: marketUrl(market, event),
     options,
     topOption,
-    shouldAlert: options.some((option) => option.alerted)
+    topRangeOption,
+    hasPriceInRange: options.some((option) => option.inRange),
+    shouldAlert: options.some((option) => option.alerted && option.inRange)
   };
 }
 
@@ -284,6 +312,7 @@ async function searchGamma(dateInput, customQuery) {
 async function scanMarkets(params) {
   const dateInput = params.get("date") || toLocalDateInput();
   const threshold = Number(params.get("threshold") || "0.94");
+  const centsRange = centsRangeFromParams(params);
   const customQuery = params.get("q") || "";
   const variants = dateVariants(dateInput);
   const queryResults = await searchGamma(dateInput, customQuery);
@@ -301,8 +330,11 @@ async function scanMarkets(params) {
       if (!hasWeatherTemperatureSignal(item.market, item.event)) continue;
       if (!hasDateSignal(item.market, item.event, variants, dateInput)) continue;
 
+      const normalized = normalizeMarket(item.market, item.event, threshold, centsRange);
+      if (!normalized.hasPriceInRange) continue;
+
       matches.push({
-        ...normalizeMarket(item.market, item.event, threshold),
+        ...normalized,
         matchedQuery: queryResult.query
       });
     }
@@ -310,6 +342,9 @@ async function scanMarkets(params) {
 
   matches.sort((a, b) => {
     if (a.shouldAlert !== b.shouldAlert) return a.shouldAlert ? -1 : 1;
+    const aRangePrice = a.topRangeOption && a.topRangeOption.price != null ? a.topRangeOption.price : -1;
+    const bRangePrice = b.topRangeOption && b.topRangeOption.price != null ? b.topRangeOption.price : -1;
+    if (aRangePrice !== bRangePrice) return bRangePrice - aRangePrice;
     const aPrice = a.topOption && a.topOption.price != null ? a.topOption.price : -1;
     const bPrice = b.topOption && b.topOption.price != null ? b.topOption.price : -1;
     return bPrice - aPrice;
@@ -319,6 +354,10 @@ async function scanMarkets(params) {
     scannedAt: new Date().toISOString(),
     date: dateInput,
     threshold,
+    centsRange: {
+      minCents: centsRange.minCents,
+      maxCents: centsRange.maxCents
+    },
     queries: queryResults.map((item) => item.query),
     count: matches.length,
     alertCount: matches.filter((market) => market.shouldAlert).length,

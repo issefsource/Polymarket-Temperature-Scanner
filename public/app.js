@@ -8,6 +8,8 @@ const state = {
 const els = {
   scanDate: document.querySelector("#scanDate"),
   threshold: document.querySelector("#threshold"),
+  minCents: document.querySelector("#minCents"),
+  maxCents: document.querySelector("#maxCents"),
   intervalSeconds: document.querySelector("#intervalSeconds"),
   query: document.querySelector("#query"),
   scanNow: document.querySelector("#scanNow"),
@@ -17,6 +19,7 @@ const els = {
   runState: document.querySelector("#runState"),
   marketCount: document.querySelector("#marketCount"),
   alertCount: document.querySelector("#alertCount"),
+  rangeSummary: document.querySelector("#rangeSummary"),
   lastScan: document.querySelector("#lastScan"),
   querySummary: document.querySelector("#querySummary"),
   resultsList: document.querySelector("#resultsList"),
@@ -37,10 +40,22 @@ function thresholdDecimal() {
   return Math.max(0.01, Math.min(0.99, cents / 100));
 }
 
+function centsBounds() {
+  const first = Math.max(0, Math.min(100, Number(els.minCents.value || 0)));
+  const second = Math.max(0, Math.min(100, Number(els.maxCents.value || 100)));
+  return {
+    minCents: Math.min(first, second),
+    maxCents: Math.max(first, second)
+  };
+}
+
 function scanUrl() {
   const params = new URLSearchParams();
+  const bounds = centsBounds();
   params.set("date", els.scanDate.value || todayInput());
   params.set("threshold", String(thresholdDecimal()));
+  params.set("minCents", String(bounds.minCents));
+  params.set("maxCents", String(bounds.maxCents));
   if (els.query.value.trim()) params.set("q", els.query.value.trim());
   return `/api/scan?${params.toString()}`;
 }
@@ -77,6 +92,11 @@ function formatDate(value) {
 function priceLabel(option) {
   if (option.priceCents == null) return "No price";
   return `${option.priceCents.toFixed(option.priceCents % 1 ? 2 : 0)}c`;
+}
+
+function rangeLabel(range) {
+  if (!range) return "0-100c";
+  return `${Number(range.minCents).toFixed(Number(range.minCents) % 1 ? 2 : 0)}-${Number(range.maxCents).toFixed(Number(range.maxCents) % 1 ? 2 : 0)}c`;
 }
 
 function escapeHtml(value) {
@@ -124,7 +144,7 @@ function addAlert(market, option) {
 function handleAlerts(payload) {
   for (const market of payload.markets) {
     for (const option of market.options) {
-      if (!option.alerted) continue;
+      if (!option.alerted || !option.inRange) continue;
       const key = `${payload.date}:${market.id}:${option.outcome}`;
       if (state.notified.has(key)) continue;
       state.notified.add(key);
@@ -141,7 +161,10 @@ function handleAlerts(payload) {
 function renderMarket(market) {
   const options = market.options
     .map((option) => {
-      const cls = option.alerted ? "option hit" : "option";
+      const classes = ["option"];
+      if (option.inRange) classes.push("in-range");
+      if (option.alerted) classes.push("hit");
+      const cls = classes.join(" ");
       return `<span class="${cls}">${escapeHtml(option.outcome)} ${escapeHtml(priceLabel(option))}</span>`;
     })
     .join("");
@@ -173,12 +196,13 @@ function render(payload) {
   state.lastPayload = payload;
   els.marketCount.textContent = String(payload.count);
   els.alertCount.textContent = String(payload.alertCount);
+  els.rangeSummary.textContent = rangeLabel(payload.centsRange);
   els.lastScan.textContent = formatTime(payload.scannedAt);
   els.querySummary.textContent = payload.queries.join(" | ");
 
   if (!payload.markets.length) {
     els.resultsList.className = "market-list empty";
-    els.resultsList.innerHTML = "<p>No matching open temperature markets were found for this scan date.</p>";
+    els.resultsList.innerHTML = "<p>No matching open temperature markets were found for this scan date and cents range.</p>";
     return;
   }
 
