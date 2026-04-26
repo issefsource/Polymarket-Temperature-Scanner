@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Polymarket Weather Detector</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Detector controls">
+        <div>
+          <p class="eyebrow">Polymarket scanner</p>
+          <h1>Weather Temperature Detector</h1>
+        </div>
+        <div class="status-pill" id="runState">Idle</div>
+      </section>
+
+      <section class="controls" aria-label="Scan settings">
+        <label>
+          <span>Scan date</span>
+          <input id="scanDate" type="date">
+        </label>
+        <label>
+          <span>Alert at cents</span>
+          <input id="threshold" type="number" min="1" max="99" step="1" value="94">
+        </label>
+        <label>
+          <span>Every seconds</span>
+          <input id="intervalSeconds" type="number" min="10" max="3600" step="5" value="60">
+        </label>
+        <label class="wide">
+          <span>Optional search query</span>
+          <input id="query" type="search" placeholder="temperature April 26">
+        </label>
+        <button id="scanNow" type="button">Scan now</button>
+        <button id="startWatch" type="button">Start watch</button>
+        <button id="stopWatch" type="button" disabled>Stop</button>
+        <button id="notifyPermission" type="button">Enable alerts</button>
+      </section>
+
+      <section class="summary" aria-label="Scan summary">
+        <div>
+          <span class="metric" id="marketCount">0</span>
+          <span class="label">matching markets</span>
+        </div>
+        <div>
+          <span class="metric warn" id="alertCount">0</span>
+          <span class="label">at threshold</span>
+        </div>
+        <div>
+          <span class="metric" id="lastScan">Never</span>
+          <span class="label">last scan</span>
+        </div>
+      </section>
+
+      <section class="results" aria-live="polite">
+        <div class="section-head">
+          <h2>Live Matches</h2>
+          <p id="querySummary"></p>
+        </div>
+        <div id="resultsList" class="market-list empty">
+          <p>No scan yet. Start with today, then keep it running while you trade.</p>
+        </div>
+      </section>
+
+      <section class="alerts">
+        <div class="section-head">
+          <h2>Alert Log</h2>
+          <button id="clearAlerts" type="button">Clear</button>
+        </div>
+        <ol id="alertLog" class="alert-log"></ol>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
