@@ -114,6 +114,29 @@ function parseDateInput(input) {
   return { year, month, day, date };
 }
 
+function parseDateQuery(input, fallbackYear) {
+  const text = normalizeText(input);
+  const monthIndex = MONTHS.findIndex(([full, short]) => {
+    return new RegExp(`\\b(${full}|${short})\\b`).test(text);
+  });
+  if (monthIndex === -1) return null;
+
+  const dayMatch = text.match(/\b([1-9]|[12]\d|3[01])\b/);
+  if (!dayMatch) return null;
+
+  const day = Number(dayMatch[1]);
+  const yearMatch = text.match(/\b(20\d{2})\b/);
+  const year = yearMatch ? Number(yearMatch[1]) : fallbackYear;
+  const month = monthIndex + 1;
+
+  return {
+    year,
+    month,
+    day,
+    dateInput: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  };
+}
+
 function dateVariants(dateInput) {
   const { year, month, day } = parseDateInput(dateInput);
   const [fullMonth, shortMonth] = MONTHS[month - 1];
@@ -208,10 +231,7 @@ function datePart(value) {
   return match ? match[1] : "";
 }
 
-function hasDateSignal(market, sourceEvent, variants, dateInput) {
-  const marketEndDate = datePart(market.endDateIso || market.endDate);
-  if (marketEndDate) return marketEndDate === dateInput;
-
+function titleHasDateSignal(market, sourceEvent, variants) {
   const haystack = normalizeText([
     market.question,
     market.title,
@@ -222,6 +242,13 @@ function hasDateSignal(market, sourceEvent, variants, dateInput) {
   ].join(" "));
 
   return variants.some((variant) => haystack.includes(normalizeText(variant)));
+}
+
+function hasDateSignal(market, sourceEvent, variants, dateInput) {
+  const marketEndDate = datePart(market.endDateIso || market.endDate);
+  if (marketEndDate) return marketEndDate === dateInput;
+
+  return titleHasDateSignal(market, sourceEvent, variants);
 }
 
 function bestEvent(market, sourceEvent) {
@@ -379,7 +406,10 @@ async function scanMarkets(params) {
   const requestedType = normalizeText(params.get("marketType") || "weather");
   const marketType = MARKET_TYPES[requestedType] ? requestedType : "weather";
   const hasCustomQuery = Boolean(customQuery.trim());
-  const variants = dateVariants(dateInput);
+  const selectedDate = parseDateInput(dateInput);
+  const queryDate = hasCustomQuery ? parseDateQuery(customQuery, selectedDate.year) : null;
+  const filterDateInput = queryDate ? queryDate.dateInput : dateInput;
+  const variants = dateVariants(filterDateInput);
   const queryResults = await searchGamma(dateInput, customQuery, marketType);
   const seen = new Set();
   const matches = [];
@@ -393,7 +423,8 @@ async function scanMarkets(params) {
       const active = item.market.active !== false && item.market.closed !== true;
       if (!active) continue;
       if (!matchesMarketType(item.market, item.event, marketType)) continue;
-      if (marketType === "weather" && !hasCustomQuery && !hasDateSignal(item.market, item.event, variants, dateInput)) continue;
+      if (queryDate && !hasDateSignal(item.market, item.event, variants, filterDateInput)) continue;
+      if (marketType === "weather" && !hasCustomQuery && !hasDateSignal(item.market, item.event, variants, filterDateInput)) continue;
 
       const normalized = normalizeMarket(item.market, item.event, threshold, centsRange);
       if (!normalized.hasPriceInRange) continue;

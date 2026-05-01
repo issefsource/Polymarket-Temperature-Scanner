@@ -1,7 +1,4 @@
 const state = {
-  timer: null,
-  running: false,
-  notified: new Set(),
   lastPayload: null
 };
 
@@ -11,21 +8,15 @@ const els = {
   threshold: document.querySelector("#threshold"),
   minCents: document.querySelector("#minCents"),
   maxCents: document.querySelector("#maxCents"),
-  intervalSeconds: document.querySelector("#intervalSeconds"),
   query: document.querySelector("#query"),
   scanNow: document.querySelector("#scanNow"),
-  startWatch: document.querySelector("#startWatch"),
-  stopWatch: document.querySelector("#stopWatch"),
-  notifyPermission: document.querySelector("#notifyPermission"),
   runState: document.querySelector("#runState"),
   marketCount: document.querySelector("#marketCount"),
   alertCount: document.querySelector("#alertCount"),
   rangeSummary: document.querySelector("#rangeSummary"),
   lastScan: document.querySelector("#lastScan"),
   querySummary: document.querySelector("#querySummary"),
-  resultsList: document.querySelector("#resultsList"),
-  alertLog: document.querySelector("#alertLog"),
-  clearAlerts: document.querySelector("#clearAlerts")
+  resultsList: document.querySelector("#resultsList")
 };
 
 function todayInput() {
@@ -60,14 +51,6 @@ function scanUrl() {
   params.set("maxCents", String(bounds.maxCents));
   if (els.query.value.trim()) params.set("q", els.query.value.trim());
   return `/api/scan?${params.toString()}`;
-}
-
-function setRunning(running) {
-  state.running = running;
-  els.startWatch.disabled = running;
-  els.stopWatch.disabled = !running;
-  els.runState.textContent = running ? "Watching" : "Idle";
-  els.runState.classList.toggle("running", running);
 }
 
 function formatTime(value) {
@@ -107,57 +90,6 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function playAlertTone() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-
-  const ctx = new AudioContext();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = 880;
-  gain.gain.setValueAtTime(0.001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.48);
-}
-
-function browserNotify(title, body) {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  new Notification(title, { body, tag: title + body });
-}
-
-function addAlert(market, option) {
-  const time = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-  const li = document.createElement("li");
-  li.innerHTML = `<strong>${escapeHtml(time)}</strong> Execute trade: ${escapeHtml(option.outcome)} reached ${escapeHtml(priceLabel(option))} in ${escapeHtml(market.question)}.`;
-  els.alertLog.prepend(li);
-}
-
-function handleAlerts(payload) {
-  for (const market of payload.markets) {
-    for (const option of market.options) {
-      if (!option.alerted || !option.inRange) continue;
-      const key = `${payload.marketType}:${payload.customQuery}:${payload.date}:${market.id}:${option.outcome}`;
-      if (state.notified.has(key)) continue;
-      state.notified.add(key);
-
-      const title = "Polymarket threshold hit";
-      const body = `${option.outcome} is ${priceLabel(option)}: ${market.question}`;
-      addAlert(market, option);
-      browserNotify(title, body);
-      playAlertTone();
-    }
-  }
 }
 
 function renderMarket(market) {
@@ -214,54 +146,24 @@ function render(payload) {
 
 async function scan() {
   els.scanNow.disabled = true;
-  els.runState.textContent = state.running ? "Scanning" : "Scanning";
+  els.runState.textContent = "Scanning";
 
   try {
     const response = await fetch(scanUrl(), { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Scan failed");
     render(payload);
-    handleAlerts(payload);
   } catch (error) {
     els.resultsList.className = "market-list empty";
     els.resultsList.innerHTML = `<p>${escapeHtml(error.message || "Scan failed")}</p>`;
   } finally {
     els.scanNow.disabled = false;
-    els.runState.textContent = state.running ? "Watching" : "Idle";
-  }
-}
-
-function startWatch() {
-  const seconds = Math.max(10, Number(els.intervalSeconds.value || 60));
-  stopWatch();
-  setRunning(true);
-  scan();
-  state.timer = window.setInterval(scan, seconds * 1000);
-}
-
-function stopWatch() {
-  if (state.timer) window.clearInterval(state.timer);
-  state.timer = null;
-  setRunning(false);
-}
-
-async function requestNotifications() {
-  if (!("Notification" in window)) {
-    addAlert({ question: "Browser notifications are unavailable here" }, { outcome: "Notice", priceCents: null });
-    return;
-  }
-  await Notification.requestPermission();
-  if (Notification.permission === "granted") {
-    browserNotify("Alerts enabled", "You will be notified when a weather option reaches your threshold.");
+    els.runState.textContent = "Idle";
   }
 }
 
 els.scanDate.value = todayInput();
 els.scanNow.addEventListener("click", scan);
-els.startWatch.addEventListener("click", startWatch);
-els.stopWatch.addEventListener("click", stopWatch);
-els.notifyPermission.addEventListener("click", requestNotifications);
-els.clearAlerts.addEventListener("click", () => {
-  els.alertLog.innerHTML = "";
-  state.notified.clear();
+els.query.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") scan();
 });

@@ -32,7 +32,7 @@
           <input id="scanDate" type="date">
         </label>
         <label>
-          <span>Alert at cents</span>
+          <span>Min alert cents</span>
           <input id="threshold" type="number" min="1" max="99" step="1" value="94">
         </label>
         <label>
@@ -44,17 +44,10 @@
           <input id="maxCents" type="number" min="0" max="100" step="0.01" value="100">
         </label>
         <label>
-          <span>Every seconds</span>
-          <input id="intervalSeconds" type="number" min="10" max="3600" step="5" value="60">
-        </label>
-        <label class="wide">
           <span>Search query</span>
           <input id="query" type="search" placeholder="12 may, election, bitcoin">
         </label>
         <button id="scanNow" type="button">Search</button>
-        <button id="startWatch" type="button">Start watch</button>
-        <button id="stopWatch" type="button" disabled>Stop</button>
-        <button id="notifyPermission" type="button">Enable alerts</button>
       </section>
 
       <section class="summary" aria-label="Scan summary">
@@ -84,14 +77,6 @@
         <div id="resultsList" class="market-list empty">
           <p>No search yet. Pick a section, add an optional query, then scan.</p>
         </div>
-      </section>
-
-      <section class="alerts">
-        <div class="section-head">
-          <h2>Alert Log</h2>
-          <button id="clearAlerts" type="button">Clear</button>
-        </div>
-        <ol id="alertLog" class="alert-log"></ol>
       </section>
     </main>
 
