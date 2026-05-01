@@ -24,6 +24,41 @@ const MONTHS = [
   ["december", "dec"]
 ];
 
+const MARKET_TYPES = {
+  weather: {
+    label: "Weather",
+    terms: ["temperature", "temp", "degrees", "fahrenheit", "highest temperature", "high temperature"]
+  },
+  politics: {
+    label: "Politics",
+    terms: [
+      "politics",
+      "election",
+      "president",
+      "presidential",
+      "senate",
+      "congress",
+      "governor",
+      "mayor",
+      "republican",
+      "democrat",
+      "government"
+    ]
+  },
+  sports: {
+    label: "Sports",
+    terms: ["sports", "nba", "nfl", "mlb", "nhl", "soccer", "football", "champions league", "world cup"]
+  },
+  crypto: {
+    label: "Crypto",
+    terms: ["crypto", "bitcoin", "btc", "ethereum", "eth", "solana", "sol", "xrp"]
+  },
+  all: {
+    label: "All",
+    terms: []
+  }
+};
+
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(status, {
@@ -100,15 +135,41 @@ function dateVariants(dateInput) {
   ];
 }
 
-function buildQueries(dateInput, customQuery) {
+function uniqueList(items) {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+}
+
+function buildQueries(dateInput, customQuery, marketType) {
+  const typeConfig = MARKET_TYPES[marketType] || MARKET_TYPES.weather;
   if (customQuery && customQuery.trim()) {
-    return [customQuery.trim()];
+    const query = customQuery.trim();
+    if (marketType === "all") return [query];
+
+    const prefixes = marketType === "weather"
+      ? ["weather", "temperature", "highest temperature"]
+      : typeConfig.terms.slice(0, 3);
+
+    return uniqueList([
+      ...prefixes.map((prefix) => `${prefix} ${query}`),
+      query
+    ]);
   }
 
   const { month, day, year } = parseDateInput(dateInput);
   const [fullMonth, shortMonth] = MONTHS[month - 1];
   const monthDay = `${fullMonth} ${day}`;
   const shortMonthDay = `${shortMonth} ${day}`;
+
+  if (marketType === "all") {
+    return [monthDay, shortMonthDay, `${monthDay} ${year}`];
+  }
+
+  if (marketType !== "weather") {
+    return uniqueList([
+      ...typeConfig.terms.slice(0, 4),
+      ...typeConfig.terms.slice(0, 2).map((term) => `${term} ${monthDay}`)
+    ]);
+  }
 
   return [
     `temperature ${monthDay}`,
@@ -119,25 +180,26 @@ function buildQueries(dateInput, customQuery) {
   ];
 }
 
-function hasWeatherTemperatureSignal(market, sourceEvent) {
-  const haystack = normalizeText([
+function marketHaystack(market, sourceEvent) {
+  return normalizeText([
     market.question,
     market.title,
     market.groupItemTitle,
     market.description,
     market.category,
+    market.slug,
     sourceEvent && sourceEvent.title,
-    sourceEvent && sourceEvent.description
+    sourceEvent && sourceEvent.description,
+    sourceEvent && sourceEvent.category,
+    sourceEvent && sourceEvent.slug
   ].join(" "));
+}
 
-  return [
-    "temperature",
-    "temp",
-    "degrees",
-    "fahrenheit",
-    "highest temperature",
-    "high temperature"
-  ].some((term) => haystack.includes(term));
+function matchesMarketType(market, sourceEvent, marketType) {
+  if (marketType === "all") return true;
+  const typeConfig = MARKET_TYPES[marketType] || MARKET_TYPES.weather;
+  const haystack = marketHaystack(market, sourceEvent);
+  return typeConfig.terms.some((term) => haystack.includes(term));
 }
 
 function datePart(value) {
@@ -289,8 +351,8 @@ async function fetchJson(url) {
   }
 }
 
-async function searchGamma(dateInput, customQuery) {
-  const queries = buildQueries(dateInput, customQuery);
+async function searchGamma(dateInput, customQuery, marketType) {
+  const queries = buildQueries(dateInput, customQuery, marketType);
   const results = [];
 
   for (const query of queries) {
@@ -314,8 +376,11 @@ async function scanMarkets(params) {
   const threshold = Number(params.get("threshold") || "0.94");
   const centsRange = centsRangeFromParams(params);
   const customQuery = params.get("q") || "";
+  const requestedType = normalizeText(params.get("marketType") || "weather");
+  const marketType = MARKET_TYPES[requestedType] ? requestedType : "weather";
+  const hasCustomQuery = Boolean(customQuery.trim());
   const variants = dateVariants(dateInput);
-  const queryResults = await searchGamma(dateInput, customQuery);
+  const queryResults = await searchGamma(dateInput, customQuery, marketType);
   const seen = new Set();
   const matches = [];
 
@@ -327,8 +392,8 @@ async function scanMarkets(params) {
 
       const active = item.market.active !== false && item.market.closed !== true;
       if (!active) continue;
-      if (!hasWeatherTemperatureSignal(item.market, item.event)) continue;
-      if (!hasDateSignal(item.market, item.event, variants, dateInput)) continue;
+      if (!matchesMarketType(item.market, item.event, marketType)) continue;
+      if (marketType === "weather" && !hasCustomQuery && !hasDateSignal(item.market, item.event, variants, dateInput)) continue;
 
       const normalized = normalizeMarket(item.market, item.event, threshold, centsRange);
       if (!normalized.hasPriceInRange) continue;
@@ -353,6 +418,9 @@ async function scanMarkets(params) {
   return {
     scannedAt: new Date().toISOString(),
     date: dateInput,
+    marketType,
+    marketTypeLabel: MARKET_TYPES[marketType].label,
+    customQuery: customQuery.trim(),
     threshold,
     centsRange: {
       minCents: centsRange.minCents,

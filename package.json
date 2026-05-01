@@ -1,8 +1,8 @@
 {
-  "name": "polymarket-weather-detector",
+  "name": "polymarket-market-detector",
   "version": "1.0.0",
   "private": true,
-  "description": "Local Polymarket weather temperature market detector with threshold alerts.",
+  "description": "Local Polymarket market detector with category search and threshold alerts.",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",

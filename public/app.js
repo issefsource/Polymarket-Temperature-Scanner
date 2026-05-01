@@ -6,6 +6,7 @@ const state = {
 };
 
 const els = {
+  marketType: document.querySelector("#marketType"),
   scanDate: document.querySelector("#scanDate"),
   threshold: document.querySelector("#threshold"),
   minCents: document.querySelector("#minCents"),
@@ -52,6 +53,7 @@ function centsBounds() {
 function scanUrl() {
   const params = new URLSearchParams();
   const bounds = centsBounds();
+  params.set("marketType", els.marketType.value || "weather");
   params.set("date", els.scanDate.value || todayInput());
   params.set("threshold", String(thresholdDecimal()));
   params.set("minCents", String(bounds.minCents));
@@ -145,7 +147,7 @@ function handleAlerts(payload) {
   for (const market of payload.markets) {
     for (const option of market.options) {
       if (!option.alerted || !option.inRange) continue;
-      const key = `${payload.date}:${market.id}:${option.outcome}`;
+      const key = `${payload.marketType}:${payload.customQuery}:${payload.date}:${market.id}:${option.outcome}`;
       if (state.notified.has(key)) continue;
       state.notified.add(key);
 
@@ -198,11 +200,11 @@ function render(payload) {
   els.alertCount.textContent = String(payload.alertCount);
   els.rangeSummary.textContent = rangeLabel(payload.centsRange);
   els.lastScan.textContent = formatTime(payload.scannedAt);
-  els.querySummary.textContent = payload.queries.join(" | ");
+  els.querySummary.textContent = `${payload.marketTypeLabel || "Markets"}: ${payload.queries.join(" | ")}`;
 
   if (!payload.markets.length) {
     els.resultsList.className = "market-list empty";
-    els.resultsList.innerHTML = "<p>No matching open temperature markets were found for this scan date and cents range.</p>";
+    els.resultsList.innerHTML = "<p>No matching open markets were found for this section, query, and cents range.</p>";
     return;
   }
 
